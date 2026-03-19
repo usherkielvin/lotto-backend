@@ -1,14 +1,11 @@
 package com.lotto.controller;
 
 import com.lotto.entity.OfficialResult;
-import com.lotto.entity.User;
 import com.lotto.repository.OfficialResultRepository;
 import com.lotto.repository.UserRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.NonNull;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,7 +20,7 @@ public class AdminController {
         this.userRepo = userRepo;
     }
 
-    private boolean isAdmin(Long userId) {
+    private boolean isAdmin(@NonNull Long userId) {
         return userRepo.findById(userId)
                 .map(u -> "admin".equals(u.getRole()))
                 .orElse(false);
@@ -68,7 +65,7 @@ public class AdminController {
 
     @DeleteMapping("/results/{id}")
     public ResponseEntity<?> deleteResult(@RequestHeader("X-User-Id") @NonNull Long userId,
-                                           @PathVariable Long id) {
+                                           @PathVariable @NonNull Long id) {
         if (!isAdmin(userId)) {
             return ResponseEntity.status(403).body(Map.of("error", "Admin access required."));
         }
