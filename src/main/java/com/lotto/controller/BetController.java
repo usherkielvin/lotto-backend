@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -101,7 +102,7 @@ public class BetController {
             tx.setType(type);
             tx.setAmount(amount);
             tx.setBalanceAfter(balance.getAmount());
-            tx.setCreatedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")));
+            tx.setCreatedAt(LocalDateTime.now());
             fundingRepo.save(tx);
 
             return ResponseEntity.ok(Map.of("balance", balance.getAmount()));
@@ -113,14 +114,19 @@ public class BetController {
     /** Funding transaction history */
     @GetMapping("/funding")
     public ResponseEntity<?> getFundingHistory(@RequestHeader("X-User-Id") @NonNull Long userId) {
+        DateTimeFormatter display = DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a");
+        DateTimeFormatter iso = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss");
         List<FundingTransaction> txs = fundingRepo.findByUserIdOrderByIdDesc(userId);
-        List<Map<String, Object>> result = txs.stream().map(tx -> Map.<String, Object>of(
-                "id",           tx.getId(),
-                "type",         tx.getType(),
-                "amount",       tx.getAmount(),
-                "balanceAfter", tx.getBalanceAfter(),
-                "createdAt",    tx.getCreatedAt()
-        )).toList();
+        List<Map<String, Object>> result = txs.stream().map(tx -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id",           tx.getId());
+            m.put("type",         tx.getType());
+            m.put("amount",       tx.getAmount());
+            m.put("balanceAfter", tx.getBalanceAfter());
+            m.put("createdAt",    tx.getCreatedAt() != null ? tx.getCreatedAt().format(display) : "");
+            m.put("date",         tx.getCreatedAt() != null ? tx.getCreatedAt().format(iso) : "");
+            return m;
+        }).toList();
         return ResponseEntity.ok(result);
     }
 }

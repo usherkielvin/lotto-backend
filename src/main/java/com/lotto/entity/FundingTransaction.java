@@ -2,6 +2,7 @@ package com.lotto.entity;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "funding_transactions")
@@ -24,7 +25,7 @@ public class FundingTransaction {
     private BigDecimal balanceAfter;
 
     @Column(name = "created_at", nullable = false)
-    private String createdAt;
+    private LocalDateTime createdAt;
 
     public FundingTransaction() {}
 
@@ -37,6 +38,6 @@ public class FundingTransaction {
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public BigDecimal getBalanceAfter() { return balanceAfter; }
     public void setBalanceAfter(BigDecimal balanceAfter) { this.balanceAfter = balanceAfter; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
