@@ -120,53 +120,42 @@ public class BetService {
 
     @Transactional
     public void settleByResult(String gameId, String drawDateKey, String drawTime, String officialNumbersCsv) {
-        // Normalize the draw time the same way bets store it
         String normalizedTime = formatDrawTime(parseSingleDrawTime(drawTime));
 
-        // Find all pending bets — case-insensitive draw time match
-        List<Bet> pending = new ArrayList<>(betRepo.findPendingByGameDateTimeIgnoreCase(gameId, drawDateKey, normalizedTime));
+        // Collect ALL bets for this slot — pending and already settled
+        // Use a map to deduplicate by bet id
+        Map<String, Bet> betMap = new LinkedHashMap<>();
 
-        // Also try with the raw imported time string if different
+        // Pending bets (case-insensitive time match)
+        for (Bet b : betRepo.findPendingByGameDateTimeIgnoreCase(gameId, drawDateKey, normalizedTime))
+            betMap.put(b.getId(), b);
+
+        // Also try raw time string if it differs from normalized
         if (!drawTime.equalsIgnoreCase(normalizedTime)) {
-            List<Bet> extra = betRepo.findPendingByGameDateTimeIgnoreCase(gameId, drawDateKey, drawTime);
-            for (Bet b : extra) {
-                if (pending.stream().noneMatch(x -> x.getId().equals(b.getId()))) {
-                    pending.add(b);
-                }
-            }
+            for (Bet b : betRepo.findPendingByGameDateTimeIgnoreCase(gameId, drawDateKey, drawTime))
+                betMap.put(b.getId(), b);
         }
 
-        // Also re-settle any bets that were previously settled with seeded RNG (wrong numbers)
-        // — identified by having officialNumbers that don't match the real result
-        List<Bet> wronglySettled = betRepo.findByGameIdAndDrawDateKeyAndDrawTimeAndStatusIn(
-            gameId, drawDateKey, normalizedTime, List.of("won", "lost"));
-        for (Bet b : wronglySettled) {
-            if (b.getOfficialNumbers() != null && !b.getOfficialNumbers().equals(officialNumbersCsv)) {
-                if (pending.stream().noneMatch(x -> x.getId().equals(b.getId()))) {
-                    pending.add(b);
-                }
-            }
-        }
+        // Already-settled bets for this slot — re-evaluate against latest numbers
+        for (Bet b : betRepo.findByGameIdAndDrawDateKeyAndDrawTimeAndStatusIn(
+                gameId, drawDateKey, normalizedTime, List.of("won", "lost")))
+            betMap.put(b.getId(), b);
 
-        if (pending.isEmpty()) {
+        if (betMap.isEmpty()) {
             log.info("No bets to settle for {} {} {}", gameId, drawDateKey, normalizedTime);
             return;
         }
 
         List<Integer> official = stringToNumbers(officialNumbersCsv);
-        BigDecimal totalPayout = BigDecimal.ZERO;
-        Map<Long, BigDecimal> payoutByUser = new LinkedHashMap<>();
-        Map<Long, BigDecimal> refundByUser = new LinkedHashMap<>(); // refund previously credited wrong payouts
+        Map<Long, BigDecimal> creditByUser  = new LinkedHashMap<>(); // new correct payouts
+        Map<Long, BigDecimal> deductByUser  = new LinkedHashMap<>(); // old wrong payouts to reverse
 
-        for (Bet bet : pending) {
-            // If bet was previously settled with wrong numbers, reverse the old payout
-            if (("won".equals(bet.getStatus()) || "lost".equals(bet.getStatus()))
-                    && bet.getOfficialNumbers() != null
-                    && !bet.getOfficialNumbers().equals(officialNumbersCsv)) {
-                BigDecimal oldPayout = bet.getPayout() != null ? bet.getPayout() : BigDecimal.ZERO;
-                if (oldPayout.compareTo(BigDecimal.ZERO) > 0) {
-                    refundByUser.merge(bet.getUserId(), oldPayout, BigDecimal::add);
-                }
+        for (Bet bet : betMap.values()) {
+            // Reverse any previously credited payout so we don't double-credit
+            BigDecimal oldPayout = bet.getPayout() != null ? bet.getPayout() : BigDecimal.ZERO;
+            if (oldPayout.compareTo(BigDecimal.ZERO) > 0
+                    && ("won".equals(bet.getStatus()) || "lost".equals(bet.getStatus()))) {
+                deductByUser.merge(bet.getUserId(), oldPayout, BigDecimal::add);
             }
 
             List<Integer> picked = stringToNumbers(bet.getNumbers());
@@ -178,34 +167,36 @@ public class BetService {
             bet.setMatches(matches);
             bet.setPayout(payout);
             bet.setOfficialNumbers(officialNumbersCsv);
-            bet.setClaimed(false);
+            // Reset claimed so user can re-acknowledge if result changed
+            if (payout.compareTo(BigDecimal.ZERO) == 0) bet.setClaimed(false);
             betRepo.save(bet);
 
             if (payout.compareTo(BigDecimal.ZERO) > 0) {
-                payoutByUser.merge(bet.getUserId(), payout, BigDecimal::add);
-                totalPayout = totalPayout.add(payout);
+                creditByUser.merge(bet.getUserId(), payout, BigDecimal::add);
             }
         }
 
-        // Apply balance changes: deduct wrong old payouts, credit correct new payouts
+        // Apply net balance change per user
         Set<Long> allUsers = new LinkedHashSet<>();
-        allUsers.addAll(payoutByUser.keySet());
-        allUsers.addAll(refundByUser.keySet());
+        allUsers.addAll(creditByUser.keySet());
+        allUsers.addAll(deductByUser.keySet());
 
+        BigDecimal totalNet = BigDecimal.ZERO;
         for (Long uid : allUsers) {
             Balance balance = balanceRepo.findById(uid).orElse(null);
             if (balance == null) continue;
-            BigDecimal credit = payoutByUser.getOrDefault(uid, BigDecimal.ZERO);
-            BigDecimal deduct = refundByUser.getOrDefault(uid, BigDecimal.ZERO);
+            BigDecimal credit = creditByUser.getOrDefault(uid, BigDecimal.ZERO);
+            BigDecimal deduct = deductByUser.getOrDefault(uid, BigDecimal.ZERO);
             BigDecimal net = credit.subtract(deduct);
             if (net.compareTo(BigDecimal.ZERO) != 0) {
                 balance.setAmount(balance.getAmount().add(net));
                 balanceRepo.save(balance);
+                totalNet = totalNet.add(net);
             }
         }
 
-        log.info("Settled {} bets for {} {} {} — total payout: {}",
-            pending.size(), gameId, drawDateKey, normalizedTime, totalPayout);
+        log.info("Re-settled {} bets for {} {} {} — net payout delta: {}",
+            betMap.size(), gameId, drawDateKey, normalizedTime, totalNet);
     }
 
     private void settleIfNeeded(@NonNull Long userId) {
