@@ -112,7 +112,7 @@ public class BetService {
             LocalDateTime drawAt = LocalDateTime.of(drawDate, drawClock);
             if (now.isBefore(drawAt)) continue;
 
-            List<Integer> official = getOfficialNumbers(game, bet.getDrawDateKey());
+            List<Integer> official = getOfficialNumbers(game, bet.getDrawDateKey(), resolvedDrawTime);
             List<Integer> picked = stringToNumbers(bet.getNumbers());
             int matches = countMatches(picked, official);
             BigDecimal payout = computePayout(matches, bet.getStake());
@@ -151,8 +151,8 @@ public class BetService {
 
     // ── Get official numbers (from DB or seeded fallback) ────────────────────
 
-    private List<Integer> getOfficialNumbers(LottoGame game, String drawDateKey) {
-        return resultRepo.findByGameIdAndDrawDateKey(game.getId(), drawDateKey)
+    private List<Integer> getOfficialNumbers(LottoGame game, String drawDateKey, String drawTime) {
+        return resultRepo.findByGameIdAndDrawDateKeyAndDrawTime(game.getId(), drawDateKey, drawTime)
                 .map(result -> stringToNumbers(result.getNumbers()))
                 .orElseGet(() -> buildOfficialNumbers(game, drawDateKey));
     }
@@ -220,13 +220,13 @@ public class BetService {
     }
 
     private BigDecimal computePayout(int matches, BigDecimal stake) {
-        return switch (matches) {
-            case 6 -> stake.multiply(new BigDecimal("50000"));
-            case 5 -> stake.multiply(new BigDecimal("5000"));
-            case 4 -> stake.multiply(new BigDecimal("500"));
-            case 3 -> stake.multiply(new BigDecimal("50"));
-            default -> BigDecimal.ZERO;
-        };
+        switch (matches) {
+            case 6: return stake.multiply(new BigDecimal("50000"));
+            case 5: return stake.multiply(new BigDecimal("5000"));
+            case 4: return stake.multiply(new BigDecimal("500"));
+            case 3: return stake.multiply(new BigDecimal("50"));
+            default: return BigDecimal.ZERO;
+        }
     }
 
     // ── Utils ──────────────────────────────────────────────────────────────────

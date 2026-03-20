@@ -44,9 +44,10 @@ CREATE TABLE IF NOT EXISTS official_results (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     game_id VARCHAR(50) NOT NULL,
     draw_date_key VARCHAR(20) NOT NULL,
+    draw_time VARCHAR(20) NOT NULL DEFAULT '9:00 PM',
     numbers VARCHAR(100) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_game_draw (game_id, draw_date_key)
+    UNIQUE KEY unique_game_draw (game_id, draw_date_key, draw_time)
 );
 
 INSERT IGNORE INTO users (username, password_hash, display_name, role) VALUES

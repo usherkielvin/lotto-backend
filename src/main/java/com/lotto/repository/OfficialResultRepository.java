@@ -6,4 +6,6 @@ import java.util.Optional;
 
 public interface OfficialResultRepository extends JpaRepository<OfficialResult, Long> {
     Optional<OfficialResult> findByGameIdAndDrawDateKey(String gameId, String drawDateKey);
+    Optional<OfficialResult> findByGameIdAndDrawDateKeyAndDrawTime(String gameId, String drawDateKey, String drawTime);
+    java.util.List<OfficialResult> findByGameIdOrderByDrawDateKeyDesc(String gameId);
 }

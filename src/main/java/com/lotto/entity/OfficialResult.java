@@ -17,6 +17,9 @@ public class OfficialResult {
     @Column(name = "draw_date_key", nullable = false)
     private String drawDateKey;
 
+    @Column(name = "draw_time", nullable = false)
+    private String drawTime = "9:00 PM";
+
     @Column(nullable = false)
     private String numbers;
 
@@ -31,6 +34,8 @@ public class OfficialResult {
     public void setGameId(String gameId) { this.gameId = gameId; }
     public String getDrawDateKey() { return drawDateKey; }
     public void setDrawDateKey(String drawDateKey) { this.drawDateKey = drawDateKey; }
+    public String getDrawTime() { return drawTime; }
+    public void setDrawTime(String drawTime) { this.drawTime = drawTime; }
     public String getNumbers() { return numbers; }
     public void setNumbers(String numbers) { this.numbers = numbers; }
     public LocalDateTime getCreatedAt() { return createdAt; }
