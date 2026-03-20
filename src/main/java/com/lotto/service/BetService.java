@@ -43,12 +43,13 @@ public class BetService {
         if (balance.getAmount().compareTo(stake) < 0) {
             throw new RuntimeException("Insufficient balance.");
         }
-        if (numbers == null || numbers.size() != 6) {
-            throw new RuntimeException("Exactly 6 numbers required.");
-        }
-
         LottoGame game = gameRepo.findById(gameId)
                 .orElseThrow(() -> new RuntimeException("Game not found."));
+
+        int requiredCount = getRequiredCount(game);
+        if (numbers == null || numbers.size() != requiredCount) {
+            throw new RuntimeException("Exactly " + requiredCount + " numbers required for " + game.getName() + ".");
+        }
 
         String drawDateKey = nextDrawDateKey();
 
@@ -127,6 +128,18 @@ public class BetService {
         }
     }
 
+    // ── Get required number count for a game ─────────────────────────────────
+
+    private int getRequiredCount(LottoGame game) {
+        String id = game.getId().toLowerCase();
+        String name = game.getName().toLowerCase();
+        if (id.contains("2d") || name.contains("ez2") || name.contains("2d")) return 2;
+        if (id.contains("3d") || name.contains("swertres") || name.contains("3d") || game.getMaxNumber() == 999) return 3;
+        if (id.contains("4d") || name.contains("4-digit") || name.contains("4d") || game.getMaxNumber() == 9999) return 4;
+        if (id.contains("6digit") || id.contains("6-digit") || (game.getMaxNumber() == 9 && name.contains("digit"))) return 6;
+        return 6; // all standard 6-number lotto games
+    }
+
     // ── Get official numbers (from DB or seeded fallback) ────────────────────
 
     private List<Integer> getOfficialNumbers(LottoGame game, String drawDateKey) {
@@ -145,23 +158,54 @@ public class BetService {
             hash = (hash * 16777619L) & 0xFFFFFFFFL;
         }
 
-        Set<Integer> picked = new LinkedHashSet<>();
-        while (picked.size() < 6) {
-            hash = (hash + (hash << 13)) & 0xFFFFFFFFL;
-            hash ^= (hash >> 7);
-            hash = (hash + (hash << 3)) & 0xFFFFFFFFL;
-            hash ^= (hash >> 17);
-            hash = (hash + (hash << 5)) & 0xFFFFFFFFL;
-            int num = (int)(hash % game.getMaxNumber()) + 1;
-            picked.add(num);
-        }
+        int required = getRequiredCount(game);
+        String id = game.getId().toLowerCase();
+        String name = game.getName().toLowerCase();
+        boolean isDigitGame = id.contains("3d") || name.contains("swertres") || name.contains("3d")
+                || id.contains("4d") || name.contains("4-digit")
+                || id.contains("6digit") || id.contains("6-digit")
+                || id.contains("2d") || name.contains("ez2");
 
-        List<Integer> result = new ArrayList<>(picked);
-        Collections.sort(result);
+        List<Integer> result = new ArrayList<>();
+        if (isDigitGame) {
+            // Digit games: random digits 0–9, repeats allowed
+            for (int i = 0; i < required; i++) {
+                hash = (hash + (hash << 13)) & 0xFFFFFFFFL;
+                hash ^= (hash >> 7);
+                hash = (hash + (hash << 3)) & 0xFFFFFFFFL;
+                hash ^= (hash >> 17);
+                hash = (hash + (hash << 5)) & 0xFFFFFFFFL;
+                result.add((int)(hash % 10));
+            }
+        } else {
+            // 6-number games: unique numbers 1–maxNumber
+            Set<Integer> picked = new LinkedHashSet<>();
+            while (picked.size() < required) {
+                hash = (hash + (hash << 13)) & 0xFFFFFFFFL;
+                hash ^= (hash >> 7);
+                hash = (hash + (hash << 3)) & 0xFFFFFFFFL;
+                hash ^= (hash >> 17);
+                hash = (hash + (hash << 5)) & 0xFFFFFFFFL;
+                int num = (int)(hash % game.getMaxNumber()) + 1;
+                picked.add(num);
+            }
+            result = new ArrayList<>(picked);
+            Collections.sort(result);
+        }
         return result;
     }
 
     private int countMatches(List<Integer> picked, List<Integer> official) {
+        // For digit games (3D/4D/6D/2D), official list may have same size as picked
+        // Use set intersection for 6-number games, positional for digit games
+        if (picked.size() == official.size() && picked.size() <= 4) {
+            // Digit game: count exact positional matches
+            int matches = 0;
+            for (int i = 0; i < picked.size(); i++) {
+                if (picked.get(i).equals(official.get(i))) matches++;
+            }
+            return matches;
+        }
         Set<Integer> officialSet = new HashSet<>(official);
         return (int) picked.stream().filter(officialSet::contains).count();
     }
