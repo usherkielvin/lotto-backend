@@ -3,7 +3,6 @@ package com.lotto.service;
 import com.lotto.entity.Balance;
 import com.lotto.entity.Bet;
 import com.lotto.entity.LottoGame;
-import com.lotto.entity.OfficialResult;
 import com.lotto.repository.BalanceRepository;
 import com.lotto.repository.BetRepository;
 import com.lotto.repository.LottoGameRepository;
