@@ -21,6 +21,9 @@ import java.util.*;
 @Service
 public class BetService {
 
+    private static final DateTimeFormatter DRAW_TIME_FORMATTER = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
+    private static final LocalTime DEFAULT_DRAW_TIME = LocalTime.of(21, 0);
+
     private final BetRepository betRepo;
     private final BalanceRepository balanceRepo;
     private final LottoGameRepository gameRepo;
@@ -51,7 +54,8 @@ public class BetService {
             throw new RuntimeException("Exactly " + requiredCount + " numbers required for " + game.getName() + ".");
         }
 
-        String drawDateKey = nextDrawDateKey();
+        LocalDateTime now = LocalDateTime.now();
+        DrawSlot drawSlot = findNextDrawSlot(game, now);
 
         Bet bet = new Bet();
         bet.setId(System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 6));
@@ -61,8 +65,9 @@ public class BetService {
         Collections.sort(numbers);
         bet.setNumbers(numbersToString(numbers));
         bet.setStake(stake);
-        bet.setDrawDateKey(drawDateKey);
-        bet.setPlacedAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")));
+        bet.setDrawDateKey(drawSlot.drawDateKey);
+        bet.setDrawTime(drawSlot.drawTimeLabel);
+        bet.setPlacedAt(now.format(DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a")));
         bet.setStatus("pending");
         betRepo.save(bet);
 
@@ -88,7 +93,7 @@ public class BetService {
         return enrichBets(bets);
     }
 
-    // ── Settle pending bets past 9 PM draw time ────────────────────────────────
+    // ── Settle pending bets past scheduled draw time ───────────────────────────
 
     private void settleIfNeeded(@NonNull Long userId) {
         List<Bet> pending = betRepo.findByUserIdAndStatusOrderByPlacedAtDesc(userId, "pending");
@@ -98,8 +103,9 @@ public class BetService {
 
         for (Bet bet : pending) {
             LocalDate drawDate = LocalDate.parse(bet.getDrawDateKey());
-            LocalDateTime drawTime = LocalDateTime.of(drawDate, LocalTime.of(21, 0));
-            if (now.isBefore(drawTime)) continue;
+            LocalTime drawClock = parseSingleDrawTime(bet.getDrawTime());
+            LocalDateTime drawAt = LocalDateTime.of(drawDate, drawClock);
+            if (now.isBefore(drawAt)) continue;
 
             LottoGame game = gameRepo.findById(bet.getGameId()).orElse(null);
             if (game == null) continue;
@@ -222,12 +228,77 @@ public class BetService {
 
     // ── Utils ──────────────────────────────────────────────────────────────────
 
-    private String nextDrawDateKey() {
-        LocalDateTime now = LocalDateTime.now();
-        LocalDate today = now.toLocalDate();
-        LocalDateTime todayDraw = LocalDateTime.of(today, LocalTime.of(21, 0));
-        LocalDate drawDate = now.isBefore(todayDraw) ? today : today.plusDays(1);
-        return drawDate.toString(); // yyyy-MM-dd
+    private DrawSlot findNextDrawSlot(LottoGame game, LocalDateTime now) {
+        List<LocalTime> drawTimes = parseDrawTimes(game.getDrawTime());
+        Set<Integer> drawDays = parseDrawDays(game.getDrawDays());
+
+        for (int dayOffset = 0; dayOffset <= 14; dayOffset++) {
+            LocalDate date = now.toLocalDate().plusDays(dayOffset);
+            int day = date.getDayOfWeek().getValue(); // 1=Mon ... 7=Sun
+            if (!drawDays.contains(day)) continue;
+
+            for (LocalTime time : drawTimes) {
+                LocalDateTime candidate = LocalDateTime.of(date, time);
+                if (candidate.isAfter(now)) {
+                    return new DrawSlot(date.toString(), formatDrawTime(time));
+                }
+            }
+        }
+
+        // Fallback should be unreachable, but preserve a safe default draw slot.
+        LocalDate fallbackDate = now.toLocalDate().plusDays(1);
+        return new DrawSlot(fallbackDate.toString(), formatDrawTime(drawTimes.get(0)));
+    }
+
+    private Set<Integer> parseDrawDays(String drawDaysCsv) {
+        Set<Integer> days = new LinkedHashSet<>();
+        if (drawDaysCsv != null) {
+            for (String part : drawDaysCsv.split(",")) {
+                String token = part.trim();
+                if (token.isEmpty()) continue;
+                try {
+                    int day = Integer.parseInt(token);
+                    if (day >= 1 && day <= 7) {
+                        days.add(day);
+                    }
+                } catch (NumberFormatException ignored) {
+                    // Ignore malformed day entries and fall back to defaults below.
+                }
+            }
+        }
+        if (days.isEmpty()) {
+            days.addAll(Arrays.asList(1, 2, 3, 4, 5, 6, 7));
+        }
+        return days;
+    }
+
+    private List<LocalTime> parseDrawTimes(String drawTimeCsv) {
+        List<LocalTime> times = new ArrayList<>();
+        if (drawTimeCsv != null) {
+            for (String part : drawTimeCsv.split(",")) {
+                String token = part.trim();
+                if (token.isEmpty()) continue;
+                times.add(parseSingleDrawTime(token));
+            }
+        }
+        if (times.isEmpty()) {
+            times.add(DEFAULT_DRAW_TIME);
+        }
+        Collections.sort(times);
+        return times;
+    }
+
+    private LocalTime parseSingleDrawTime(String drawTime) {
+        if (drawTime == null || drawTime.isBlank()) return DEFAULT_DRAW_TIME;
+        try {
+            return LocalTime.parse(drawTime.trim().toUpperCase(Locale.ENGLISH), DRAW_TIME_FORMATTER);
+        } catch (RuntimeException ignored) {
+            return DEFAULT_DRAW_TIME;
+        }
+    }
+
+    private String formatDrawTime(LocalTime time) {
+        return time.format(DRAW_TIME_FORMATTER).toUpperCase(Locale.ENGLISH);
     }
 
     private String numbersToString(List<Integer> nums) {
@@ -264,11 +335,22 @@ public class BetService {
         m.put("numbers", stringToNumbers(bet.getNumbers()));
         m.put("stake", bet.getStake());
         m.put("drawDateKey", bet.getDrawDateKey());
+        m.put("drawTime", bet.getDrawTime());
         m.put("placedAt", bet.getPlacedAt());
         m.put("status", bet.getStatus());
         m.put("matches", bet.getMatches());
         m.put("payout", bet.getPayout());
         m.put("officialNumbers", bet.getOfficialNumbers() != null ? stringToNumbers(bet.getOfficialNumbers()) : null);
         return m;
+    }
+
+    private static class DrawSlot {
+        private final String drawDateKey;
+        private final String drawTimeLabel;
+
+        private DrawSlot(String drawDateKey, String drawTimeLabel) {
+            this.drawDateKey = drawDateKey;
+            this.drawTimeLabel = drawTimeLabel;
+        }
     }
 }

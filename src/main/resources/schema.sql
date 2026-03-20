@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS bets (
     numbers VARCHAR(100) NOT NULL,
     stake DECIMAL(10,2) NOT NULL,
     draw_date_key VARCHAR(20) NOT NULL,
+    draw_time VARCHAR(20) NOT NULL DEFAULT '9:00 PM',
     placed_at VARCHAR(50) NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     matches INT,

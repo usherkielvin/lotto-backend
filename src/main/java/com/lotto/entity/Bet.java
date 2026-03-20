@@ -30,6 +30,9 @@ public class Bet {
     @Column(name = "draw_date_key", nullable = false)
     private String drawDateKey;
 
+    @Column(name = "draw_time", nullable = false)
+    private String drawTime = "9:00 PM";
+
     @Column(name = "placed_at", nullable = false)
     private String placedAt;
 
@@ -59,6 +62,8 @@ public class Bet {
     public void setStake(BigDecimal stake) { this.stake = stake; }
     public String getDrawDateKey() { return drawDateKey; }
     public void setDrawDateKey(String drawDateKey) { this.drawDateKey = drawDateKey; }
+    public String getDrawTime() { return drawTime; }
+    public void setDrawTime(String drawTime) { this.drawTime = drawTime; }
     public String getPlacedAt() { return placedAt; }
     public void setPlacedAt(String placedAt) { this.placedAt = placedAt; }
     public String getStatus() { return status; }
