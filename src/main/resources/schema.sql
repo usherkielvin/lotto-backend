@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     display_name VARCHAR(100),
     role VARCHAR(20) NOT NULL DEFAULT 'user',
+    avatar_url MEDIUMTEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

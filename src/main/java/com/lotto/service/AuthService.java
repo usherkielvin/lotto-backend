@@ -67,6 +67,7 @@ public class AuthService {
         result.put("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
         result.put("role", user.getRole());
         result.put("demo", isDemo);
+        result.put("avatarUrl", user.getAvatarUrl());
         return result;
     }
 }

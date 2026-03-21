@@ -50,12 +50,18 @@ public class ProfileService {
             user.setUsername(clean);
         }
 
+        String avatarUrl = body.get("avatarUrl");
+        if (avatarUrl != null) {
+            user.setAvatarUrl(avatarUrl.isEmpty() ? null : avatarUrl);
+        }
+
         userRepo.save(user);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("userId", user.getId());
         result.put("username", user.getUsername());
         result.put("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
+        result.put("avatarUrl", user.getAvatarUrl());
         return result;
     }
 
@@ -108,6 +114,7 @@ public class ProfileService {
         result.put("userId", userId);
         result.put("username", user.getUsername());
         result.put("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
+        result.put("avatarUrl", user.getAvatarUrl());
         result.put("memberSince", user.getCreatedAt() != null
                 ? user.getCreatedAt().getMonth().name().substring(0, 1)
                   + user.getCreatedAt().getMonth().name().substring(1).toLowerCase()

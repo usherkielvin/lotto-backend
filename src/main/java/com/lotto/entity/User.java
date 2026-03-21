@@ -20,6 +20,9 @@ public class User {
     @Column(name = "display_name")
     private String displayName;
 
+    @Column(name = "avatar_url", columnDefinition = "MEDIUMTEXT")
+    private String avatarUrl;
+
     @Column(nullable = false)
     private String role = "user"; // "user" or "admin"
 
@@ -36,6 +39,8 @@ public class User {
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getDisplayName() { return displayName; }
     public void setDisplayName(String displayName) { this.displayName = displayName; }
+    public String getAvatarUrl() { return avatarUrl; }
+    public void setAvatarUrl(String avatarUrl) { this.avatarUrl = avatarUrl; }
     public String getRole() { return role; }
     public void setRole(String role) { this.role = role; }
     public LocalDateTime getCreatedAt() { return createdAt; }
