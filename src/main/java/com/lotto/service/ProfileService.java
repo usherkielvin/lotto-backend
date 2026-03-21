@@ -61,10 +61,10 @@ public class ProfileService {
         result.put("username", user.getUsername());
         result.put("displayName", user.getDisplayName() != null ? user.getDisplayName() : user.getUsername());
         result.put("memberSince", user.getCreatedAt() != null
-                ? "Member since " + user.getCreatedAt().getMonth().name().substring(0, 1)
+                ? user.getCreatedAt().getMonth().name().substring(0, 1)
                   + user.getCreatedAt().getMonth().name().substring(1).toLowerCase()
                   + " " + user.getCreatedAt().getYear()
-                : "Member");
+                : "");
         result.put("balance", balance);
         result.put("totalPlays", totalPlays);
         result.put("prizesWon", prizesWon);

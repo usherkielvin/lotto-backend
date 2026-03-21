@@ -43,6 +43,14 @@ public class BetService {
 
     @Transactional
     public Map<String, Object> placeBet(@NonNull Long userId, @NonNull String gameId, List<Integer> numbers, BigDecimal stake) {
+        // Block betting from 9:00 PM to 7:00 AM (maintenance window)
+        LocalTime nowTime = LocalTime.now();
+        LocalTime cutoffEvening = LocalTime.of(21, 0); // 9:00 PM
+        LocalTime cutoffMorning = LocalTime.of(7, 0);  // 7:00 AM
+        if (!nowTime.isBefore(cutoffEvening) || nowTime.isBefore(cutoffMorning)) {
+            throw new RuntimeException("Betting is closed from 9:00 PM to 7:00 AM. Please come back after 7:00 AM.");
+        }
+
         // Validate balance
         Balance balance = balanceRepo.findById(userId)
                 .orElseThrow(() -> new RuntimeException("Balance not found."));

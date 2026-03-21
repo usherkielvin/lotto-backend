@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS official_results (
     draw_time VARCHAR(20) NOT NULL DEFAULT '9:00 PM',
     numbers VARCHAR(100) NOT NULL,
     jackpot BIGINT,
+    winners INT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY unique_game_draw (game_id, draw_date_key, draw_time)
 );
@@ -64,20 +65,23 @@ CREATE TABLE IF NOT EXISTS funding_transactions (
 );
 
 -- ─── Fresh start: wipe transactional data on every startup ───────────────────
--- official_results is intentionally excluded so admin-imported results persist.
--- Order matters: bets and funding reference users.
+-- Users, balances, and official_results persist across restarts.
+-- Only bets and funding history reset (simulator transactional data).
 
 SET FOREIGN_KEY_CHECKS = 0;
 TRUNCATE TABLE bets;
 TRUNCATE TABLE funding_transactions;
-TRUNCATE TABLE balances;
-TRUNCATE TABLE users;
 SET FOREIGN_KEY_CHECKS = 1;
 
--- ─── Seed: admin account only (no balance) ────────────────────────────────────
--- Password: "password" (bcrypt)
-INSERT INTO users (username, password_hash, display_name, role) VALUES
-    ('admin', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrator', 'admin');
+-- ─── Seed: admin + demo accounts ─────────────────────────────────────────────
+-- Password: "password" (bcrypt) — INSERT IGNORE so existing accounts survive restarts
+INSERT IGNORE INTO users (username, password_hash, display_name, role) VALUES
+    ('admin',       '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Administrator', 'admin'),
+    ('demo-player', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Demo Player',   'user');
+
+-- Seed demo balance only if not already present
+INSERT IGNORE INTO balances (user_id, amount)
+    SELECT id, 0.00 FROM users WHERE username = 'demo-player';
 
 -- ─── Static lotto games ───────────────────────────────────────────────────────
 -- draw_days: 1=Mon 2=Tue 3=Wed 4=Thu 5=Fri 6=Sat 7=Sun

@@ -1,6 +1,7 @@
 package com.lotto.controller;
 
 import com.lotto.entity.OfficialResult;
+import com.lotto.repository.BetRepository;
 import com.lotto.repository.OfficialResultRepository;
 import com.lotto.repository.UserRepository;
 import com.lotto.service.BetService;
@@ -19,13 +20,16 @@ public class AdminController {
     private final OfficialResultRepository resultRepo;
     private final UserRepository userRepo;
     private final BetService betService;
+    private final BetRepository betRepo;
 
     public AdminController(OfficialResultRepository resultRepo,
                            UserRepository userRepo,
-                           BetService betService) {
+                           BetService betService,
+                           BetRepository betRepo) {
         this.resultRepo = resultRepo;
         this.userRepo = userRepo;
         this.betService = betService;
+        this.betRepo = betRepo;
     }
 
     private boolean isAdmin(@NonNull Long userId) {
@@ -66,6 +70,15 @@ public class AdminController {
                 catch (NumberFormatException ignored) {}
             }
 
+            // Persist official winner count if provided
+            Object winnersRaw = body.get("winners");
+            if (winnersRaw instanceof Number) {
+                result.setWinners(((Number) winnersRaw).intValue());
+            } else if (winnersRaw instanceof String ws && !ws.isBlank()) {
+                try { result.setWinners(Integer.parseInt(ws.replaceAll("[^0-9]", ""))); }
+                catch (NumberFormatException ignored) {}
+            }
+
             resultRepo.save(result);
             betService.settleByResult(gameId, drawDateKey, drawTime, numbers);
             return ResponseEntity.ok(Map.of("message", "Result saved."));
@@ -78,7 +91,19 @@ public class AdminController {
     @GetMapping("/results")
     public ResponseEntity<?> getAllResults(@RequestHeader("X-User-Id") @NonNull Long userId) {
         if (!isAdmin(userId)) return ResponseEntity.status(403).body(Map.of("error", "Admin access required."));
-        return ResponseEntity.ok(resultRepo.findAll());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (OfficialResult r : resultRepo.findAll()) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id",          r.getId());
+            row.put("gameId",      r.getGameId());
+            row.put("drawDateKey", r.getDrawDateKey());
+            row.put("drawTime",    r.getDrawTime());
+            row.put("numbers",     r.getNumbers());
+            row.put("winners",     r.getWinners() != null ? r.getWinners() : 0);
+            if (r.getJackpot() != null) row.put("jackpot", r.getJackpot());
+            out.add(row);
+        }
+        return ResponseEntity.ok(out);
     }
 
     // ── DELETE /api/admin/results/{id} ────────────────────────────────────────
@@ -122,6 +147,7 @@ public class AdminController {
 
         List<ParsedResult> parsed = parseText(text);
         int imported = 0, skipped = 0;
+        long totalWinners = 0;
         List<String> errors = new ArrayList<>();
 
         for (ParsedResult pr : parsed) {
@@ -134,8 +160,11 @@ public class AdminController {
                 result.setDrawTime(pr.drawTime);
                 result.setNumbers(pr.numbers);
                 if (pr.jackpot != null) result.setJackpot(pr.jackpot);
+                if (pr.winners != null) result.setWinners(pr.winners);
                 resultRepo.save(result);
                 betService.settleByResult(pr.gameId, pr.drawDateKey, pr.drawTime, pr.numbers);
+                totalWinners += betRepo.countByGameIdAndDrawDateKeyAndDrawTimeAndStatus(
+                    pr.gameId, pr.drawDateKey, pr.drawTime, "won");
                 imported++;
             } catch (Exception e) {
                 skipped++;
@@ -143,7 +172,7 @@ public class AdminController {
             }
         }
 
-        return ResponseEntity.ok(Map.of("imported", imported, "skipped", skipped, "errors", errors));
+        return ResponseEntity.ok(Map.of("imported", imported, "skipped", skipped, "winners", totalWinners, "errors", errors));
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -153,8 +182,9 @@ public class AdminController {
     private static class ParsedResult {
         String gameId, drawDateKey, drawTime, numbers;
         Long jackpot;
-        ParsedResult(String g, String d, String t, String n, Long j) {
-            gameId = g; drawDateKey = d; drawTime = t; numbers = n; jackpot = j;
+        Integer winners;
+        ParsedResult(String g, String d, String t, String n, Long j, Integer w) {
+            gameId = g; drawDateKey = d; drawTime = t; numbers = n; jackpot = j; winners = w;
         }
     }
 
@@ -198,6 +228,12 @@ public class AdminController {
         "\\b(\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?)\\b"
     );
 
+    // Winner count: trailing plain integer at end of table line, e.g. "... 4,500.00   170"
+    // Must be a small-ish integer (≤ 999999) not preceded by a currency symbol
+    private static final Pattern WINNER_COUNT_PAT = Pattern.compile(
+        "(?<![P₱\\d,\\.])\\b(\\d{1,6})\\s*$"
+    );
+
     // Space-separated whole-line numbers: "08 32 20 36 05 12" / "5 3 6" / "08 09"
     private static final Pattern SPACE_NUMS_PAT = Pattern.compile(
         "^(\\d{1,2}(?:\\s+\\d{1,2}){1,5})$"
@@ -232,6 +268,7 @@ public class AdminController {
 
             String numbers = null;
             Long jackpot   = null;
+            Integer winners = null;
 
             // ── Try inline dash-separated numbers (table format) ──────────────
             Matcher dm = DASH_NUMS_PAT.matcher(line);
@@ -241,6 +278,17 @@ public class AdminController {
 
             // Jackpot on same line
             jackpot = extractJackpot(line);
+
+            // Winner count: trailing plain integer after jackpot in table format
+            // e.g. "3D Lotto 2PM  2-8-9  3/21/2026  4,500.00  170"
+            if (jackpot != null) {
+                String stripped = line.replaceAll("[P₱]\\s*[\\d,]+(?:\\.\\d{1,2})?", "")
+                                      .replaceAll("\\b\\d{1,3}(?:,\\d{3})+(?:\\.\\d{1,2})?", "").trim();
+                Matcher wm = WINNER_COUNT_PAT.matcher(stripped);
+                if (wm.find()) {
+                    try { winners = Integer.parseInt(wm.group(1)); } catch (NumberFormatException ignored) {}
+                }
+            }
 
             // ── If no inline numbers, look ahead (GMA multi-line format) ──────
             if (numbers == null) {
@@ -270,7 +318,7 @@ public class AdminController {
             }
 
             if (numbers != null) {
-                results.add(new ParsedResult(gameId, drawDateKey, normalizeTime(drawTime), numbers, jackpot));
+                results.add(new ParsedResult(gameId, drawDateKey, normalizeTime(drawTime), numbers, jackpot, winners));
             }
         }
 

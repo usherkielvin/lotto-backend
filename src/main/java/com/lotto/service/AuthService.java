@@ -54,7 +54,7 @@ public class AuthService {
         user.setDisplayName(displayName != null && !displayName.isBlank() ? displayName : clean);
         user = userRepo.save(user);
 
-        Balance balance = new Balance(user.getId(), new BigDecimal("5000.00"));
+        Balance balance = new Balance(user.getId(), new BigDecimal("0.00"));
         balanceRepo.save(balance);
 
         return buildSession(user, false);

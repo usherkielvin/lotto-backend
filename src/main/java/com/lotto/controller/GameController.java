@@ -1,7 +1,6 @@
 package com.lotto.controller;
 
 import com.lotto.entity.LottoGame;
-import com.lotto.repository.BetRepository;
 import com.lotto.repository.LottoGameRepository;
 import com.lotto.repository.OfficialResultRepository;
 import org.springframework.web.bind.annotation.*;
@@ -17,12 +16,10 @@ public class GameController {
 
     private final LottoGameRepository gameRepo;
     private final OfficialResultRepository resultRepo;
-    private final BetRepository betRepo;
 
-    public GameController(LottoGameRepository gameRepo, OfficialResultRepository resultRepo, BetRepository betRepo) {
+    public GameController(LottoGameRepository gameRepo, OfficialResultRepository resultRepo) {
         this.gameRepo = gameRepo;
         this.resultRepo = resultRepo;
-        this.betRepo = betRepo;
     }
 
     @GetMapping
@@ -69,13 +66,12 @@ public class GameController {
 
             List<Map<String, Object>> drawResults = new ArrayList<>();
             for (com.lotto.entity.OfficialResult r : results) {
-                long winners = betRepo.countByGameIdAndDrawDateKeyAndDrawTimeAndStatus(
-                    game.getId(), r.getDrawDateKey(), r.getDrawTime(), "won");
                 Map<String, Object> dr = new LinkedHashMap<>();
                 dr.put("drawDateKey", r.getDrawDateKey());
                 dr.put("drawTime",    r.getDrawTime());
                 dr.put("numbers",     r.getNumbers());
-                dr.put("winners",     winners);
+                dr.put("winners",     r.getWinners() != null ? r.getWinners() : 0);
+                if (r.getJackpot() != null) dr.put("jackpot", r.getJackpot());
                 drawResults.add(dr);
             }
             row.put("results", drawResults);

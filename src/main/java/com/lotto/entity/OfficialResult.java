@@ -27,6 +27,10 @@ public class OfficialResult {
     @Column(name = "jackpot")
     private Long jackpot;
 
+    /** Official winner count from PCSO results (nullable — populated on import/manual entry) */
+    @Column(name = "winners")
+    private Integer winners;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -44,6 +48,8 @@ public class OfficialResult {
     public void setNumbers(String numbers) { this.numbers = numbers; }
     public Long getJackpot() { return jackpot; }
     public void setJackpot(Long jackpot) { this.jackpot = jackpot; }
+    public Integer getWinners() { return winners; }
+    public void setWinners(Integer winners) { this.winners = winners; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
